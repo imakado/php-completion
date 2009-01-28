@@ -28,12 +28,20 @@
 (require 'anything)
 
 ;;; Customize Variables
+(defgroup php-completion nil
+  "php-completion"
+  :group 'php-completion)
+
 (defcustom phpcmp-browse-function 'browse-url
-  "called with one argment URI")
+  "called with one argment URI"
+  :group 'php-completion
+  :type 'function)
 
 (defcustom phpcmp-manual-url-format "http://jp2.php.net/manual-lookup.php?lang=ja&pattern=%s"
-  "see `phpcmp-search-url'")
-
+  "`%s' is replaced to query.
+see `phpcmp-search-url'"
+  :group 'php-completion
+  :type 'string)
 
 (defvar phpcmp-php-type
   '(php-completion
