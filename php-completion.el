@@ -99,7 +99,7 @@ see `phpcmp-search-url'"
   `((name . "PHP functions")
     (init . (lambda ()
               (with-current-buffer (anything-candidate-buffer 'global)
-                (insert (mapconcat 'identity phpcmp-functions "\n")))))
+                (insert (mapconcat 'identity (phpcmp-get-functions) "\n")))))
     (candidates-in-buffer)
     (type . php-completion)
     ))
@@ -168,6 +168,74 @@ see `phpcmp-search-url'"
               phpcmp-source-ini-directives)
             (phpcmp-get-initial-input)))
 
+
+(defvar phpcmp-get-functions-async-buffer-name " *php-completion functions*")
+(lexical-let (functions)
+  (defun phpcmp-get-functions ()
+    (or functions
+        (prog1 phpcmp-functions
+          (phpcmp-async-set-functions))))
+
+  (defun phpcmp-clear-functions ()
+    (setq functions nil))
+
+  (defun phpcmp-async-set-functions ()
+    (or functions
+        (let* ((buf-name phpcmp-get-functions-async-buffer-name)
+               (process-running? (eq 'run
+                                     (let ((proc (get-buffer-process buf-name)))
+                                       (when (processp proc)
+                                         (process-status proc)))))
+               (php-command (executable-find "php")))
+          (when (and (not (phpcmp-tramp-p))
+                     (not process-running?)
+                     php-command)
+            (phpcmp-async-do
+             :buffer-name buf-name
+             :command php-command
+             :args '("-r"
+                     "foreach (get_defined_functions() as $vars) { foreach ($vars as $var) {echo \"$var\n\";}}")
+             :callback (lambda ()
+                         (setq functions (phpcmp-collect-matches "[[:print:]]+")))))))))
+
+(defun phpcmp-tramp-p ()
+  (when (and (featurep 'tramp)
+             (fboundp 'tramp-tramp-file-p))
+    (tramp-tramp-file-p (phpcmp-get-current-directory))))
+
+(defun phpcmp-get-current-directory ()
+  (file-name-directory
+   (expand-file-name
+    (or (buffer-file-name)
+        default-directory))))
+
+(defun* phpcmp-collect-matches
+    (re &optional (count 0) (match-string-fn 'match-string)
+        (point-min (point-min)) (point-max (point-max)))
+  (save-excursion
+    (loop initially (goto-char point-min)
+          while (re-search-forward re point-max t)
+          collect (funcall match-string-fn count))))
+
+(defun* phpcmp-async-do
+    (&key command args buffer-name
+          (callback 'identity)
+          (errorback (lambda() (message (buffer-string)))))
+  (lexical-let ((buf (get-buffer-create buffer-name))
+                (callback callback)
+                (errorback errorback))
+    (lexical-let
+      ((sentinel (lambda (proc event)
+         (cond ((and (string= event "finished\n")
+                     (= (process-exit-status proc) 0))
+                (with-current-buffer buf
+                  (funcall callback)))
+               ((and (string= event "finished\n")
+                     (/= (process-exit-status proc) 0))
+                (with-current-buffer buf
+                  (funcall errorback)))))))
+      (set-process-sentinel (apply 'start-process command buf command args) sentinel))))
+
 (defun phpcmp-search-manual (query)
   (let ((url (phpcmp-search-url query)))
     (funcall phpcmp-browse-function url)))
@@ -184,31 +252,23 @@ see `phpcmp-search-url'"
   '((candidates . phpcmp-build-cands-patial)))
 
 (defun phpcmp-build-cands ()
-  (let ((los (phpcmp-get-cands)))
-    (phpcmp-build-cands1 los)))
+  (all-completions ac-target (phpcmp-get-cands)))
 
 (defun phpcmp-build-cands-patial ()
   (let ((los (phpcmp-get-cands)))
-    (phpcmp-build-cands1
-     los
-     (lambda (s)
-       (and (stringp s)
-            (string-match ac-target s)
-            (not (string= ac-target s)))))))
+    (append (all-completions ac-target los)
+            (phpcmp-build-cands1 los))))
 
-(defun* phpcmp-build-cands1
-    (los &optional (filter
-                    (lambda (s)
-                      (and (stringp s)
-                           (string-match (concat "^" ac-target) s)
-                           (not (string= ac-target s))))))
-  (loop for s in los
-        when (funcall filter s)
-        collect s))
+(defun phpcmp-build-cands1 (los)
+  (let ((match (lambda (s)
+                 (and (stringp s)
+                      (string-match ac-target s)
+                      (not (string= ac-target s))))))
+    (remove-if-not match los)))
 
 (defun phpcmp-get-cands ()
   (append phpcmp-types
-          phpcmp-functions
+          (phpcmp-get-functions)
           phpcmp-constants
           phpcmp-keywords
           phpcmp-superglobals
