@@ -1,5 +1,11 @@
 ;;;  -*- coding: utf-8; mode: emacs-lisp; -*-
-;;; php-completion.el --
+;;; php-completion.el -- complete everything PHP with Anything.el
+
+;; Copyright (C) 2009  IMAKADO <ken.imakado@gmail.com>
+
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;; Notice, this is development version
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 ;; Author: IMAKADO <ken.imakado@gmail.com>
 ;; blog: http://d.hatena.ne.jp/IMAKADO (japanese)
@@ -20,6 +26,36 @@
 ;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ;; Boston, MA 02110-1301, USA.
 
+;;; Commentary:
+
+;; Installation:
+;;
+;; put `php-completion.el' somewhere in your emacs load path.
+;; add these lines to your .emacs file:
+;; -------------- .emacs -----------------------------
+;; (add-hook 'php-mode-hook
+;;           (lambda ()
+;;             (require 'php-completion)
+;;             (php-completion-mode t)
+;;             (define-key php-mode-map (kbd "C-o") 'phpcmp-complete)))
+;; ---------------------------------------------------
+
+;; Cooperation with auto-complete.el:
+;;
+;; add these lines to your .emacs file:
+;; (add-hook  'php-mode-hook
+;;            (lambda ()
+;;              (when (require 'auto-complete)
+;;                (make-variable-buffer-local 'ac-sources)
+;;                (add-to-list 'ac-sources 'ac-source-php-completion)
+;;                ;; if you like patial match,
+;;                ;; use `ac-source-php-completion-patial' instead of `ac-source-php-completion'.
+;;                ;; I recommend this way.
+;;                ;; (add-to-list 'ac-sources 'ac-source-php-completion-patial)
+;;                (auto-complete-mode t))))
+
+
+
 (require 'cl)
 (require 'rx)
 (require 'browse-url)
@@ -27,13 +63,15 @@
 
 (require 'anything)
 
+(defvar phpcmp-version 0.01)
+
 ;;; Customize Variables
 (defgroup php-completion nil
   "php-completion"
   :group 'php-completion)
 
 (defcustom phpcmp-browse-function 'browse-url
-  "called with one argment URI"
+  "called with one argment URL"
   :group 'php-completion
   :type 'function)
 
