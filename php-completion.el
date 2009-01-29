@@ -81,6 +81,11 @@ see `phpcmp-search-url'"
   :group 'php-completion
   :type 'string)
 
+(defcustom phpcmp-lighter " Completion"
+  "value is displayed in the modeline when the php-completion-mode is on."
+  :group 'php-completion
+  :type 'string)
+
 (defvar phpcmp-php-type
   '(php-completion
     (action . (("Insert" . (lambda (candidate)
@@ -6391,5 +6396,13 @@ see `phpcmp-search-url'"
     "int" "integer" "long" "mixed" "object" "real"
     "string"))
 
+
+;;; Mode
+
+(define-minor-mode php-completion-mode
+  "php-completion mode"
+  :lighter phpcmp-lighter
+  :group 'php-completion
+  (phpcmp-async-set-functions))
 
 (provide 'php-completion)
