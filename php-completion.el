@@ -26,6 +26,13 @@
 ;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ;; Boston, MA 02110-1301, USA.
 
+;;; log:
+;;
+;; ver 0.02
+;;   * IMAKADO:
+;;      * candidates from GLOBAL tag files.
+
+
 ;;; Commentary:
 
 ;; Installation:
@@ -63,7 +70,7 @@
 
 (require 'anything)
 
-(defvar phpcmp-version 0.01)
+(defvar phpcmp-version 0.02)
 
 ;;; Customize Variables
 (defgroup php-completion nil
@@ -85,6 +92,11 @@ see `phpcmp-search-url'"
   "value is displayed in the modeline when the php-completion-mode is on."
   :group 'php-completion
   :type 'string)
+
+(defcustom phpcmp-global-enable-auto-update-tag-files nil
+  "If value is non-nil, automatically update tag files."
+  :group 'php-completion
+  :type 'boolean)
 
 (defvar phpcmp-php-type
   '(php-completion
@@ -128,7 +140,7 @@ see `phpcmp-search-url'"
               (with-current-buffer (anything-candidate-buffer 'global)
                 (insert (mapconcat 'identity phpcmp-keywords "\n")))))
     (candidates-in-buffer)
-    (type . php-completion)    
+    (type . php-completion)
     ))
 
 (defvar phpcmp-source-superglobals
@@ -137,7 +149,7 @@ see `phpcmp-search-url'"
               (with-current-buffer (anything-candidate-buffer 'global)
                 (insert (mapconcat 'identity phpcmp-superglobals "\n")))))
     (candidates-in-buffer)
-    (type . php-completion)    
+    (type . php-completion)
     ))
 
 (defvar phpcmp-source-types
@@ -146,7 +158,25 @@ see `phpcmp-search-url'"
               (with-current-buffer (anything-candidate-buffer 'global)
                 (insert (mapconcat 'identity phpcmp-types "\n")))))
     (candidates-in-buffer)
-    (type . php-completion)    
+    (type . php-completion)
+    ))
+
+(defvar phpcmp-source-global-get-tags
+  `((name . "PHP global tags")
+    (init . (lambda ()
+              (with-current-buffer (anything-candidate-buffer 'global)
+                (insert (mapconcat 'identity (phpcmp-global-get-tags) "\n")))))
+    (candidates-in-buffer)
+    (type . php-completion)
+    ))
+
+(defvar phpcmp-source-global-get-symbols
+  `((name . "PHP global symbols")
+    (init . (lambda ()
+              (with-current-buffer (anything-candidate-buffer 'global)
+                (insert (mapconcat 'identity (phpcmp-global-get-symbols) "\n")))))
+    (candidates-in-buffer)
+    (type . php-completion)
     ))
 
 
@@ -157,10 +187,12 @@ see `phpcmp-search-url'"
                                         (progn (save-excursion
                                                  (skip-syntax-backward "w_")
                                                  (point))))))
-  
+
 (defun phpcmp-complete ()
   (interactive)
-  (anything '(phpcmp-source-types
+  (anything '(phpcmp-source-global-get-symbols
+              phpcmp-source-global-get-tags
+              phpcmp-source-types
               phpcmp-source-functions
               phpcmp-source-constants
               phpcmp-source-keywords
@@ -244,6 +276,45 @@ see `phpcmp-search-url'"
   (format phpcmp-manual-url-format
           (url-hexify-string query)))
 
+;;; GLOBAL
+(defun phpcmp-global-execute-command (option)
+  (let ((global-cmd (executable-find "global"))
+        (tags-not-found? (lambda (los) 
+                           (and (stringp (car los))
+                                (string= "global: GTAGS not found." (car los))))))
+    (when phpcmp-global-enable-auto-update-tag-files
+      (phpcmp-global-auto-update-tag-files))
+    (when global-cmd
+      (with-temp-buffer
+        (call-process "global" nil t nil option)
+        (let ((los (phpcmp-collect-matches "[[:print:]]+")))
+          (unless (funcall tags-not-found? los)
+            los))))))
+
+(defun phpcmp-global-get-symbols ()
+  (phpcmp-global-execute-command "-cs"))
+
+(defun phpcmp-global-get-tags ()
+  (phpcmp-global-execute-command "-c"))
+
+
+(defun phpcmp-global-auto-update-tag-files ()
+  (lexical-let* ((global-cmd (executable-find "global"))
+                 (buf-name " *php-completion GLOBAL update*")
+                 (process-running? (eq 'run
+                                       (let ((proc (get-buffer-process buf-name)))
+                                         (when (processp proc)
+                                           (process-status proc))))))
+    (when (and global-cmd
+               (not process-running?))
+      (phpcmp-async-do
+       :command global-cmd
+       :args '("-u")
+       :buffer-name buf-name
+       :callback (lambda ()
+                   (kill-buffer buf-name))))))
+
+
 ;;; auto-complete.el
 (defvar ac-source-php-completion
   '((candidates . phpcmp-build-cands)))
@@ -267,13 +338,16 @@ see `phpcmp-search-url'"
     (remove-if-not match los)))
 
 (defun phpcmp-get-cands ()
-  (append phpcmp-types
-          (phpcmp-get-functions)
-          phpcmp-constants
-          phpcmp-keywords
-          phpcmp-superglobals
-          phpcmp-ini-directives
-          ))
+  (append
+   (phpcmp-global-get-symbols)
+   (phpcmp-global-get-tags)
+   phpcmp-types
+   (phpcmp-get-functions)
+   phpcmp-constants
+   phpcmp-keywords
+   phpcmp-superglobals
+   phpcmp-ini-directives
+   ))
 
 
 ;; (let ((s (shell-command-to-string "perl scrape-funcs.pl"))
@@ -6463,6 +6537,7 @@ see `phpcmp-search-url'"
   '("array" "bool" "boolean" "char" "const" "double" "float"
     "int" "integer" "long" "mixed" "object" "real"
     "string"))
+
 
 
 ;;; Mode
