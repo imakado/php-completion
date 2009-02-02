@@ -67,6 +67,7 @@
 (require 'rx)
 (require 'browse-url)
 (require 'url-util)
+(require 'etags)
 
 (require 'anything)
 
@@ -313,6 +314,180 @@ see `phpcmp-search-url'"
        :buffer-name buf-name
        :callback (lambda ()
                    (kill-buffer buf-name))))))
+
+;;; Etags
+;; Struct phpcmp-tag
+;; tag-file: TAGSファイルのパス
+
+;; path: fileのfullpath
+
+;; classes:
+;; (("classname" . ("method" "method1" "method2"))
+;;  ("classname1" . ("method" "method1" "method2")))
+;; のような構造の association list
+
+;; functions: 関数のリスト
+
+;; variables: 変数のリスト
+(defstruct (phpcmp-tag
+            (:constructor phpcmp-make-tag
+                          (&key tag-file path relative-path  classes functions variables))
+            (:type list))
+  tag-file path relative-path classes functions variables)
+
+(defstruct (phpcmp-class
+            (:constructor phpcmp-make-class
+                          (&key name parent methods variables))
+            (:type list))
+  name parent methods variables)
+
+;; this function is copied from anything-etags.el
+(defvar phpcmp-etags-tag-file-name "TAGS")
+(defvar phpcmp-etags-tag-file-search-limit 10)
+(defun phpcmp-etags-find-tag-file ()
+  "Return tags file.
+If file is not found, return nil"
+  (let ((file-exists? (lambda (dir)
+                        (let ((tag-path (concat dir phpcmp-etags-tag-file-name)))
+                          (and (stringp tag-path)
+                               (file-exists-p tag-path)
+                               (file-readable-p tag-path)))))
+        (current-dir (phpcmp-get-current-directory)))
+    (ignore-errors
+      (loop with count = 0
+            until (funcall file-exists? current-dir)
+            ;; Return nil if outside the value of
+            ;; `phpcmp-etags-tag-file-search-limit'.
+            if (= count phpcmp-etags-tag-file-search-limit)
+            do (return nil)
+            ;; Or search upper directories.
+            else
+            do (progn (incf count)
+                      (setq current-dir (expand-file-name (concat current-dir "../"))))
+            finally return (concat current-dir phpcmp-etags-tag-file-name)))))
+
+(defun phpcmp-etags-get-tags ()
+  "Return list of struct `phpcmp-tag'"
+  (let ((tag-file (phpcmp-etags-find-tag-file)))
+    (when tag-file
+      (with-temp-buffer
+        (insert-file-contents tag-file)
+        (phpcmp-etags-parse-tags-buffer tag-file)
+        ))))
+
+;; This monster regexp matches an etags tag line.
+;;   \1 is the string to match;
+;;   \2 is not interesting;
+;;   \3 is the guessed tag name; XXX guess should be better eg DEFUN
+;;   \4 is not interesting;
+;;   \5 is the explicitly-specified tag name.
+;;   \6 is the line to start searching at;
+;;   \7 is the char to start searching at.
+(defvar phpcmp-etags-parse-tags-file-regexp
+  (rx bol
+      (group                                             ;1
+       (regexp "\\([^\177]+[^-a-zA-Z0-9_+*$:\177]+\\)?") ;2
+       (regexp "\\([-a-zA-Z0-9_+*$?:]+\\)")              ;3
+       (regexp "[^-a-zA-Z0-9_+*$?:\177]*"))
+      "\177"
+      (regexp "\\(\\([^\n\001]+\\)\001\\)?") ;4, 5
+
+      (regexp "\\([0-9]+\\)?")               ;6
+      ","
+      (regexp "\\([0-9]+\\)?")               ;7
+      "\n"
+      ))
+
+(defun phpcmp-etags-split-each-file (s)
+  (split-string s "\14[ \n]+"))
+
+(defun phpcmp-etags-parse-tags-buffer (tag-file)
+  (let ((each-file-tag-strings
+         (delete "" (split-string (buffer-string) "\14[ \n]+"))))
+    (loop for s in each-file-tag-strings
+          collect (phpcmp-deftag s tag-file))))
+
+(defun phpcmp-deftag (tag-string tag-file)
+  (with-temp-buffer
+    (insert tag-string)
+    (goto-char (point-min))
+    ;; Return struct `phpcmp-tag'
+    (phpcmp-deftag-parse tag-file)))
+
+(defun phpcmp-deftag-parse (tag-file)
+  (let ((relative-file-path (phpcmp-deftag-parse-file-info)))
+    (let (path relative-path classes functions variables)
+      (while (not (eobp))
+        (cond
+         ((looking-at (rx bol (* space) "class"))
+          (push (phpcmp-deftag-parse-class) classes))
+         ((looking-at phpcmp-etags-parse-tags-file-regexp)
+          (push (match-string 5) functions)
+          (forward-line))
+         (t
+          (forward-line))))
+      (phpcmp-make-tag
+       :tag-file tag-file
+       :path (concat (file-name-directory tag-file)
+                     relative-file-path)
+       :classes classes
+       :functions functions
+       :variables variables))))
+
+(defun phpcmp-deftag-parse-file-info ()
+  (when (looking-at (rx bol (group (+ (not (any ",")))) "," (? (* digit)) "\n"))
+    (let* ((relative-file-path (match-string 1)))
+      (prog1 relative-file-path
+        (forward-line)))))
+
+(defun phpcmp-deftag-parse-class ()
+  (let ((class-str (phpcmp-take-same-indent-string))
+        name parent methods variables)
+    (with-temp-buffer
+      (insert class-str)
+      (goto-char (point-min))
+      (while (not (eobp))
+        (cond
+         ((looking-at (rx bol (* space) "class" (? (*? not-newline) "extends" (+ space) (group (+ (any alpha "_"))))))
+          (let ((parent-class (match-string 1)))
+            (when parent-class
+              (setq parent parent-class)))
+          (when (looking-at phpcmp-etags-parse-tags-file-regexp)
+            (let ((class-name (match-string 5)))
+              (setq name class-name)))
+          (forward-line))
+         ((looking-at (rx bol (* space) (? (or "public" "private")) (* space) "function"))
+          (when (looking-at phpcmp-etags-parse-tags-file-regexp)
+            (let ((function (match-string 5)))
+              (push function methods)))
+          (forward-line))
+         ((looking-at (rx bol (* space) "$" (+ (any alnum "_")) (* space) "="))
+          (when (looking-at phpcmp-etags-parse-tags-file-regexp)
+            (let ((variable (match-string 5)))
+              (push variable variables)))
+          (forward-line))
+         (t
+          (forward-line)))))
+    (phpcmp-make-class
+     :name name
+     :parent parent
+     :methods methods
+     :variables variables)))
+
+(defun phpcmp-take-same-indent-string ()
+  "move point"
+  (let ((cur-indent (current-indentation))
+        (cur-point (point)))
+    (forward-line)
+    (buffer-substring-no-properties
+     cur-point
+     (loop while (and
+                  (not
+                   (>= cur-indent
+                       (current-indentation)))
+                  (not (eobp)))
+           do (forward-line)
+           finally return (point)))))
 
 
 ;;; auto-complete.el
@@ -6547,5 +6722,35 @@ see `phpcmp-search-url'"
   :lighter phpcmp-lighter
   :group 'php-completion
   (phpcmp-async-set-functions))
+
+
+
+;;; Test
+(defmacro phpcmp-with-string-buffer (s &rest body)
+  `(with-temp-buffer
+     (insert ,s)
+     (goto-char (point-min))
+     (when (re-search-forward (rx "`!!'") nil t)
+       (replace-match ""))
+     (progn
+       ,@body)))
+
+(dont-compile
+  (when (fboundp 'expectations)
+    (expectations
+      (desc "phpcmp-take-same-indent-string")
+      (expect "class AdminController extends Zend_Controller_ActionAdminController22,556
+  public function init()init35,1051
+"
+        (phpcmp-with-string-buffer 
+       "`!!'class AdminController extends Zend_Controller_ActionAdminController22,556
+  public function init()init35,1051
+function"
+       (phpcmp-take-same-indent-string)))
+
+      
+      )))
+
+
 
 (provide 'php-completion)
