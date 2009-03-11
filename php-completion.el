@@ -1,6 +1,6 @@
 ;;; php-completion.el -- complete everything PHP with Anything.el
 
-;; Copyright © 2009 KAYAC Inc. All rights reserved.
+;; Copyright (C) 2009 KAYAC Inc. All rights reserved.
 
 ;; Author: IMAKADO <ken.imakado@gmail.com>
 ;; blog: http://d.hatena.ne.jp/IMAKADO (japanese)
@@ -147,16 +147,26 @@ see `phpcmp-search-url'"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Variables ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar phpcmp-identifier-regexp "[a-zA-Z_][a-zA-Z_0-9]*")
 
+;; etags
+(defvar phpcmp-etags-tag-file-name "TAGS")
+(defvar phpcmp-etags-tag-file-search-limit 10)
+(defvar phpcmp-etags-completions-table nil
+  "alist, ((name . (list of candidates))
+           (name . (list of candidates))
+           ...)")
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hooks ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar phpcmp--initialize-hook nil
   "run when invoke completion command")
+
+(defvar phpcmp-obj-instance-of-module-maybe-alist nil)
 
 (add-hook 'phpcmp--initialize-hook
           (lambda ()
             (setq phpcmp-obj-instance-of-module-maybe-alist
                   (phpcmp-get-obj-instance-of-module-maybe-alist))))
 
-(defvar phpcmp-obj-instance-of-module-maybe-alist nil)
 (defun phpcmp-get-obj-instance-of-module-maybe-alist ()
   (let* ((re (rx-to-string `(and (group
                                   "$" ;1 var name
@@ -303,6 +313,8 @@ see `phpcmp-search-url'"
   (add-to-list 'phpcmp--smart-sort-rules (list detector regexps-or-fn)))
 
 (defun phpcmp-smart-sort (table)
+  ;; silence compiler
+  (declare (special detector))
   (let ((do-sort (lambda (regexps-or-fn ret-detector)
                    (cond
                     ((functionp regexps-or-fn)
@@ -458,6 +470,10 @@ see `phpcmp-search-url'"
  "variable")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Candidates from php command ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; silence compiler
+(defun phpcmp-get-functions () ())
+(defun phpcmp-async-set-functions () ())
+
 (defvar phpcmp-get-functions-async-buffer-name "*php-completion functions*")
 (lexical-let (set-functions-done)
   (defun phpcmp-get-functions ()
@@ -619,12 +635,6 @@ see `phpcmp-search-url'"
 
 
 ;; this function is copied from anything-etags.el
-(defvar phpcmp-etags-tag-file-name "TAGS")
-(defvar phpcmp-etags-tag-file-search-limit 10)
-(defvar phpcmp-etags-completions-table nil
-  "alist, ((name . (list of candidates))
-           (name . (list of candidates))
-           ...)")
 
 (defun phpcmp-etags-find-tag-file ()
   "Find TAGS file, if can't find TAGS file in same directory, `phpcmp-etags-find-tag-file' try to find upper directory.
@@ -7216,12 +7226,12 @@ to the position of point in the selected window."
           (and (equal first "superglobals")
                (equal second "global tags"))))
       (desc "phpcmp-take-same-indent-string")
-      (expect "class AdminController extends Zend_Controller_ActionAdminController22,556
-  public function init()init35,1051
+      (expect "class AdminController extends Zend_Controller_ActionAdminController 22,556
+  public function init()init 35,1051
 "
         (phpcmp-with-php-buffer 
-         "`!!'class AdminController extends Zend_Controller_ActionAdminController22,556
-  public function init()init35,1051
+         "`!!'class AdminController extends Zend_Controller_ActionAdminController 22,556
+  public function init()init 35,1051
 function"
          (phpcmp-take-same-indent-string)))
       (desc "phpcmp-db-get")
@@ -7288,12 +7298,12 @@ function"
       (expect t
 
         (let ((tags (phpcmp-with-php-buffer
-                     "class OS_GuessOS_Guess100,3447
-    function OS_Guess($uname = null)OS_Guess108,3550
-
-class SimpleCRUDSimpleCRUD64,1683
-     * $gdClient - Client class used to communicate with the Blogger serviceused74,1824
-    public function __construct($email, $password)__construct89,2249
+                     "class OS_GuessOS_Guess 100,3447
+    function OS_Guess($uname = null)OS_Guess 108,3550
+ 
+class SimpleCRUDSimpleCRUD 64,1683
+     * $gdClient - Client class used to communicate with the Blogger serviceused 74,1824
+    public function __construct($email, $password)__construct 89,2249
 "
                      (phpcmp-etags-parse-tags-buffer "dummy"))))
           (and (phpcmp-tag-p (first tags))
