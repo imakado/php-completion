@@ -298,6 +298,41 @@ see `phpcmp-search-url'"
     (maphash (lambda (k v) (push k ret)) hash)
     ret))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Candidates from php command ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; silence compiler
+;; (defun phpcmp-get-functions () ())
+(defun phpcmp-async-set-functions () ())
+
+(defvar phpcmp-get-functions-async-buffer-name "*php-completion functions*")
+(lexical-let (set-functions-done)
+  (defun phpcmp-async-set-functions ()
+    (unless set-functions-done
+      (let* ((buf-name phpcmp-get-functions-async-buffer-name)
+             (process-running? (eq 'run
+                                   (let ((proc (get-buffer-process buf-name)))
+                                     (when (processp proc)
+                                       (process-status proc)))))
+             (php-command (executable-find "php")))
+        (when (and (not (phpcmp-tramp-p))
+                   (not process-running?)
+                   php-command)
+          (phpcmp-async-do
+           :buffer-name buf-name
+           :command php-command
+           :args '("-r"
+                   "foreach (get_defined_functions() as $vars) { foreach ($vars as $var) {echo \"$var\n\";}}")
+           :callback (lambda ()
+                       (let ((los (phpcmp-collect-matches "[[:print:]]+")))
+                         (phpcmp-db-update 'functions los)
+                         (setq set-functions-done t))))))))
+  (defun phpcmp-get-functions ()
+    (prog1 (phpcmp-db-get 'functions)
+      (unless set-functions-done
+        (phpcmp-async-set-functions)))))
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Completion ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defvar phpcmp-initial-input nil)
 (defun phpcmp-get-initial-input ()
@@ -468,39 +503,6 @@ see `phpcmp-search-url'"
 (phpcmp-add-smart-sort-rule
  'phpcmp-smart-sort-variable
  "variable")
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Candidates from php command ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; silence compiler
-(defun phpcmp-get-functions () ())
-(defun phpcmp-async-set-functions () ())
-
-(defvar phpcmp-get-functions-async-buffer-name "*php-completion functions*")
-(lexical-let (set-functions-done)
-  (defun phpcmp-get-functions ()
-    (prog1 (phpcmp-db-get 'functions)
-      (unless set-functions-done
-        (phpcmp-async-set-functions))))
-
-  (defun phpcmp-async-set-functions ()
-    (unless set-functions-done
-      (let* ((buf-name phpcmp-get-functions-async-buffer-name)
-             (process-running? (eq 'run
-                                   (let ((proc (get-buffer-process buf-name)))
-                                       (when (processp proc)
-                                         (process-status proc)))))
-               (php-command (executable-find "php")))
-          (when (and (not (phpcmp-tramp-p))
-                     (not process-running?)
-                     php-command)
-            (phpcmp-async-do
-             :buffer-name buf-name
-             :command php-command
-             :args '("-r"
-                     "foreach (get_defined_functions() as $vars) { foreach ($vars as $var) {echo \"$var\n\";}}")
-             :callback (lambda ()
-                         (let ((los (phpcmp-collect-matches "[[:print:]]+")))
-                           (phpcmp-db-update 'functions los)
-                           (setq set-functions-done t)))))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Document ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
