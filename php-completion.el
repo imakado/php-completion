@@ -103,6 +103,7 @@
 (require 'url-util)
 (require 'etags)
 (require 'thingatpt)
+(require 'tool-bar)
 
 (require 'anything)
 (require 'anything-match-plugin)
