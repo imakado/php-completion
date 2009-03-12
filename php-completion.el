@@ -302,7 +302,8 @@ see `phpcmp-search-url'"
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Candidates from php command ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; silence compiler
 ;; (defun phpcmp-get-functions () ())
-(defun phpcmp-async-set-functions () ())
+(defun phpcmp-async-set-functions (&rest dummy))
+(defun phpcmp-get-functions (&rest dummy))
 
 (defvar phpcmp-get-functions-async-buffer-name "*php-completion functions*")
 (lexical-let (set-functions-done)
