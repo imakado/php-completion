@@ -1,6 +1,6 @@
 ;;; php-completion.el -- complete everything PHP with Anything.el
 
-;; Copyright (C) 2009 KAYAC Inc. All rights reserved.
+;; Copyright (c) 2009 by KAYAC Inc.
 
 ;; Author: IMAKADO <ken.imakado@gmail.com>
 ;; blog: http://d.hatena.ne.jp/IMAKADO (japanese)
