@@ -1,9 +1,12 @@
-;;; php-completion.el -- complete everything PHP with Anything.el
+;;; php-completion.el -- complete everything PHP with Anything.el or helm.el
 
 ;; Copyright (c) 2009 by KAYAC Inc.
 
 ;; Author: IMAKADO <ken.imakado@gmail.com>
 ;; blog: http://d.hatena.ne.jp/IMAKADO (japanese)
+;; Author: Norio Suzuki <norio.suzuki@gmail.com>
+;; GitHub: https://github.com/suzuki
+;;
 ;; Prefix: phpcmp-
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -22,6 +25,11 @@
 ;; Boston, MA 02110-1301, USA.
 
 ;;; log:
+
+;; ver 0.04
+;;   * Norio Suzuki:
+;;      * support helm
+;;      * Emacs 24.3+, use cl-labels instead of labels
 
 ;; ver 0.03
 ;;   * IMAKADO:
@@ -104,12 +112,39 @@
 (require 'etags)
 (require 'thingatpt)
 (require 'tool-bar)
-
-(require 'anything)
-(require 'anything-match-plugin)
 (require 'auto-complete)
 
-(defvar phpcmp-version 0.03)
+;; require helm or anything
+(condition-case nil
+    (require 'helm)
+  (error (require 'anything)))
+
+(defun phpcmp-setup-helm ()
+  "Setting up function alias for helm"
+  (defalias 'phpcmp-anything (symbol-function 'helm))
+  (defalias 'phpcmp-anything-candidate-buffer (symbol-function 'helm-candidate-buffer))
+)
+
+(defun phpcmp-setup-anything ()
+  "Setting up function alias for anything"
+  (defalias 'phpcmp-anything (symbol-function 'anything))
+  (defalias 'phpcmp-anything-candidate-buffer (symbol-function 'anything-candidate-buffer))
+)
+
+(if (featurep 'helm)
+    (progn
+      (require 'helm-match-plugin)
+      (phpcmp-setup-helm))
+  (progn
+    (require 'anything-match-plugin)
+    (phpcmp-setup-anything)))
+
+;; Emacs 24.3+, use "cl-labels" instead of "labels"
+(if (version<= emacs-version "24.3")
+    (defalias 'phpcmp-labels (symbol-function 'labels))
+  (defalias 'phpcmp-labels (symbol-function 'cl-labels)))
+
+(defvar phpcmp-version 0.04)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Customize Variables ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -441,10 +476,10 @@ see `phpcmp-search-url'"
     (error table)))
 
 (defun phpcmp-make-completion-sources ()
-  (labels ((make-source (&key name candidates)
+  (phpcmp-labels ((make-source (&key name candidates)
             `((name . ,name)
               (init . (lambda ()
-                        (with-current-buffer (anything-candidate-buffer 'global)
+                        (with-current-buffer (phpcmp-anything-candidate-buffer 'global)
                           (insert (mapconcat 'identity
                                              (if (functionp ',candidates)
                                                  (funcall ',candidates)
@@ -845,8 +880,8 @@ If file is not found, return nil"
 
 (defun phpcmp-complete ()
   (interactive)
-  (anything (phpcmp-make-completion-sources)
-            (phpcmp-get-initial-input)))
+  (phpcmp-anything (phpcmp-make-completion-sources)
+		   (phpcmp-get-initial-input)))
 
 (defun phpcmp-showdoc-at-point ()
   (interactive)
@@ -7199,7 +7234,6 @@ to the position of point in the selected window."
     (x-show-tip (propertize text 'face 'phpcmp-showtip-face)
                 (selected-frame) params phpcmp-showtip-timeout)))
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Test ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defmacro phpcmp-with-php-buffer (s &rest body)
   `(with-temp-buffer
@@ -7233,7 +7267,7 @@ to the position of point in the selected window."
       (expect "class AdminController extends Zend_Controller_ActionAdminController 22,556
   public function init()init 35,1051
 "
-        (phpcmp-with-php-buffer 
+        (phpcmp-with-php-buffer
          "`!!'class AdminController extends Zend_Controller_ActionAdminController 22,556
   public function init()init 35,1051
 function"
@@ -7284,7 +7318,7 @@ function"
         (phpcmp-db-update '__test-los '("a" "c"))
         (equal (phpcmp-db-get '__test-los)
                '("c" "a" "b")))
-        
+
 
       (desc "phpcmp-smart-sort")
       (expect "Class"
@@ -7304,7 +7338,7 @@ function"
         (let ((tags (phpcmp-with-php-buffer
                      "class OS_GuessOS_Guess 100,3447
     function OS_Guess($uname = null)OS_Guess 108,3550
- 
+
 class SimpleCRUDSimpleCRUD 64,1683
      * $gdClient - Client class used to communicate with the Blogger serviceused 74,1824
     public function __construct($email, $password)__construct 89,2249
